@@ -237,7 +237,7 @@ namespace Unity.VectorGraphics
         public SVGDocument(XmlReader docReader, float dpi, Scene scene, int windowWidth, int windowHeight, bool applyRootViewBox)
         {
             allElems = new ElemHandler[]
-            { circle, defs, ellipse, g, image, line, linearGradient, path, polygon, polyline, radialGradient, clipPath, pattern, mask, rect, symbol, use, style };
+            { svg, circle, defs, ellipse, g, image, line, linearGradient, path, polygon, polyline, radialGradient, clipPath, pattern, mask, rect, symbol, use, style };
 
             // These elements excluded below should not be immediatelly part of the hierarchy and can only be referenced
             elemsToAddToHierarchy = new HashSet<ElemHandler>(new ElemHandler[]
@@ -1169,12 +1169,23 @@ namespace Unity.VectorGraphics
 
         void svg()
         {
+            bool isRoot = false;
             var node = docReader.VisitCurrent();
-            var sceneNode = new SceneNode();
+            SceneNode sceneNode = null;
+            
             if (scene.Root == null) // If this is the root SVG element, then we set the vector scene root as well
             {
+                sceneNode = new SceneNode();
+                isRoot = true;
                 System.Diagnostics.Debug.Assert(currentSceneNode.Count == 0);
                 scene.Root = sceneNode;
+            }
+            else
+            {
+                sceneNode = currentSceneNode.Peek();
+                var x = AttribLengthVal(node["x"], node, "x", 0.0f, DimType.Width);
+                var y = AttribLengthVal(node["y"], node, "y", 0.0f, DimType.Height);
+                sceneNode.Transform = Matrix2D.Translate(new Vector2(x, y));
             }
 
             styles.PushNode(node);
@@ -1182,18 +1193,24 @@ namespace Unity.VectorGraphics
             ParseID(node, sceneNode);
             ParseOpacity(sceneNode);
 
-            sceneViewport = ParseViewport(node, sceneNode, new Vector2(windowWidth, windowHeight));
-            var viewBoxInfo = ParseViewBox(node, sceneNode, sceneViewport);
+            var sceneViewport_ = ParseViewport(node, sceneNode, new Vector2(windowWidth, windowHeight));
+            if (isRoot)
+                sceneViewport = sceneViewport_;
+            var viewBoxInfo = ParseViewBox(node, sceneNode, sceneViewport_);
+            
             if (applyRootViewBox)
-                ApplyViewBox(sceneNode, viewBoxInfo, sceneViewport);
+                ApplyViewBox(sceneNode, viewBoxInfo, sceneViewport_);
 
-            currentContainerSize.Push(sceneViewport.size);
+            currentContainerSize.Push(sceneViewport_.size);
             if (!viewBoxInfo.IsEmpty)
                 currentViewBoxSize.Push(viewBoxInfo.ViewBox.size);
 
             currentSceneNode.Push(sceneNode);
             nodeGlobalSceneState[sceneNode] = new NodeGlobalSceneState() { ContainerSize = currentContainerSize.Peek() };
 
+            if (!isRoot)
+                AddToSVGDictionaryIfPossible(node, sceneNode);
+            
             if (ShouldDeclareSupportedChildren(node))
                 SupportElems(node, allElems);
             ParseChildren(node, "svg");
