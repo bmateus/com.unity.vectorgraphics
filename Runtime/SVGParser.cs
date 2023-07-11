@@ -2804,126 +2804,135 @@ namespace Unity.VectorGraphics
             if (pathCommand != 'm' && pathCommand != 'M')
                 throw new Exception("Path must start with a MoveTo pathCommand");
 
-            char lastCmdNoCase = '\0';
-            Vector2 lastQCtrlPoint = Vector2.zero;
-
-            while (NextPathCommand() != (char)0)
+            try
             {
-                bool relative = (pathCommand >= 'a') && (pathCommand <= 'z');
-                char cmdNoCase = char.ToLower(pathCommand);
-                if (cmdNoCase == 'm') // Move-to
-                {
-                    penPos = NextVector2(relative);
-                    pathCommand = relative ? 'l' : 'L'; // After a move-to, we automatically switch to a line-to of the same relativity
-                    ConcludePath(false);
-                }
-                else if (cmdNoCase == 'z') // ClosePath
-                {
-                    if (currentContour.First != null)
-                        penPos = currentContour.First.Value.P0;
-                    ConcludePath(true);
-                }
-                else if (cmdNoCase == 'l') // Line-to
-                {
-                    var to = NextVector2(relative);
-                    if ((to - penPos).magnitude > VectorUtils.Epsilon)
-                        currentContour.AddLast(VectorUtils.MakeLine(penPos, to));
-                    penPos = to;
-                }
-                else if (cmdNoCase == 'h') // Horizontal-line-to
-                {
-                    float x = relative ? penPos.x + NextFloat() : NextFloat();
-                    var to = new Vector2(x, penPos.y);
-                    if ((to - penPos).magnitude > VectorUtils.Epsilon)
-                        currentContour.AddLast(VectorUtils.MakeLine(penPos, to));
-                    penPos = to;
-                }
-                else if (cmdNoCase == 'v') // Vertical-line-to
-                {
-                    float y = relative ? penPos.y + NextFloat() : NextFloat();
-                    var to = new Vector2(penPos.x, y);
-                    if ((to - penPos).magnitude > VectorUtils.Epsilon)
-                        currentContour.AddLast(VectorUtils.MakeLine(penPos, to));
-                    penPos = to;
-                }
-                else if (cmdNoCase == 'c' || cmdNoCase == 'q') // Cubic-bezier-curve or quadratic-bezier-curve
-                {
-                    // If relative, the pen position is on P0 and is only moved to P3
-                    BezierSegment bs = new BezierSegment();
-                    bs.P0 = penPos;
-                    bs.P1 = NextVector2(relative);
-                    if (cmdNoCase == 'c')
-                        bs.P2 = NextVector2(relative);
-                    bs.P3 = NextVector2(relative);
 
-                    if (cmdNoCase == 'q')
+                char lastCmdNoCase = '\0';
+                Vector2 lastQCtrlPoint = Vector2.zero;
+
+                while (NextPathCommand() != (char)0)
+                {
+                    bool relative = (pathCommand >= 'a') && (pathCommand <= 'z');
+                    char cmdNoCase = char.ToLower(pathCommand);
+                    if (cmdNoCase == 'm') // Move-to
                     {
-                        lastQCtrlPoint = bs.P1;
-                        var t = 2.0f/3.0f;
-                        bs.P1 = bs.P0 + t * (lastQCtrlPoint - bs.P0);
-                        bs.P2 = bs.P3 + t * (lastQCtrlPoint - bs.P3);
+                        penPos = NextVector2(relative);
+                        pathCommand = relative ? 'l' : 'L'; // After a move-to, we automatically switch to a line-to of the same relativity
+                        ConcludePath(false);
                     }
-
-                    penPos = bs.P3;
-
-                    if (!VectorUtils.IsEmptySegment(bs))
-                        currentContour.AddLast(bs);
-                }
-                else if (cmdNoCase == 's' || cmdNoCase == 't') // Smooth cubic-bezier-curve or smooth quadratic-bezier-curve
-                {
-                    Vector2 reflectedP1 = penPos;
-                    if (currentContour.Count > 0 && (lastCmdNoCase == 'c' || lastCmdNoCase == 'q' || lastCmdNoCase == 's' || lastCmdNoCase == 't'))
-                        reflectedP1 += currentContour.Last.Value.P3 - ((lastCmdNoCase == 'q' || lastCmdNoCase == 't') ? lastQCtrlPoint : currentContour.Last.Value.P2);
-
-                    // If relative, the pen position is on P0 and is only moved to P3
-                    BezierSegment bs = new BezierSegment();
-                    bs.P0 = penPos;
-                    bs.P1 = reflectedP1;
-                    if (cmdNoCase == 's')
-                        bs.P2 = NextVector2(relative);
-                    bs.P3 = NextVector2(relative);
-
-                    if (cmdNoCase == 't')
+                    else if (cmdNoCase == 'z') // ClosePath
                     {
-                        lastQCtrlPoint = bs.P1;
-                        var t = 2.0f / 3.0f;
-                        bs.P1 = bs.P0 + t * (lastQCtrlPoint - bs.P0);
-                        bs.P2 = bs.P3 + t * (lastQCtrlPoint - bs.P3);
+                        if (currentContour.First != null)
+                            penPos = currentContour.First.Value.P0;
+                        ConcludePath(true);
                     }
-
-                    penPos = bs.P3;
-
-                    if (!VectorUtils.IsEmptySegment(bs))
-                        currentContour.AddLast(bs);
-                }
-                else if (cmdNoCase == 'a') // Elliptical-arc-to
-                {
-                    Vector2 radii = NextVector2();
-                    float xAxisRotation = NextFloat();
-                    bool largeArcFlag = NextBool();
-                    bool sweepFlag = NextBool();
-                    Vector2 to = NextVector2(relative);
-
-                    if (radii.magnitude <= VectorUtils.Epsilon)
+                    else if (cmdNoCase == 'l') // Line-to
                     {
+                        var to = NextVector2(relative);
                         if ((to - penPos).magnitude > VectorUtils.Epsilon)
                             currentContour.AddLast(VectorUtils.MakeLine(penPos, to));
+                        penPos = to;
                     }
-                    else
+                    else if (cmdNoCase == 'h') // Horizontal-line-to
                     {
-                        var ellipsePath = VectorUtils.BuildEllipsePath(penPos, to, -xAxisRotation * Mathf.Deg2Rad, radii.x, radii.y, largeArcFlag, sweepFlag);
-                        foreach (var seg in VectorUtils.SegmentsInPath(ellipsePath))
-                            currentContour.AddLast(seg);
+                        float x = relative ? penPos.x + NextFloat() : NextFloat();
+                        var to = new Vector2(x, penPos.y);
+                        if ((to - penPos).magnitude > VectorUtils.Epsilon)
+                            currentContour.AddLast(VectorUtils.MakeLine(penPos, to));
+                        penPos = to;
+                    }
+                    else if (cmdNoCase == 'v') // Vertical-line-to
+                    {
+                        float y = relative ? penPos.y + NextFloat() : NextFloat();
+                        var to = new Vector2(penPos.x, y);
+                        if ((to - penPos).magnitude > VectorUtils.Epsilon)
+                            currentContour.AddLast(VectorUtils.MakeLine(penPos, to));
+                        penPos = to;
+                    }
+                    else if (cmdNoCase == 'c' || cmdNoCase == 'q') // Cubic-bezier-curve or quadratic-bezier-curve
+                    {
+                        // If relative, the pen position is on P0 and is only moved to P3
+                        BezierSegment bs = new BezierSegment();
+                        bs.P0 = penPos;
+                        bs.P1 = NextVector2(relative);
+                        if (cmdNoCase == 'c')
+                            bs.P2 = NextVector2(relative);
+                        bs.P3 = NextVector2(relative);
+
+                        if (cmdNoCase == 'q')
+                        {
+                            lastQCtrlPoint = bs.P1;
+                            var t = 2.0f / 3.0f;
+                            bs.P1 = bs.P0 + t * (lastQCtrlPoint - bs.P0);
+                            bs.P2 = bs.P3 + t * (lastQCtrlPoint - bs.P3);
+                        }
+
+                        penPos = bs.P3;
+
+                        if (!VectorUtils.IsEmptySegment(bs))
+                            currentContour.AddLast(bs);
+                    }
+                    else if (cmdNoCase == 's' || cmdNoCase == 't') // Smooth cubic-bezier-curve or smooth quadratic-bezier-curve
+                    {
+                        Vector2 reflectedP1 = penPos;
+                        if (currentContour.Count > 0 && (lastCmdNoCase == 'c' || lastCmdNoCase == 'q' || lastCmdNoCase == 's' || lastCmdNoCase == 't'))
+                            reflectedP1 += currentContour.Last.Value.P3 - ((lastCmdNoCase == 'q' || lastCmdNoCase == 't') ? lastQCtrlPoint : currentContour.Last.Value.P2);
+
+                        // If relative, the pen position is on P0 and is only moved to P3
+                        BezierSegment bs = new BezierSegment();
+                        bs.P0 = penPos;
+                        bs.P1 = reflectedP1;
+                        if (cmdNoCase == 's')
+                            bs.P2 = NextVector2(relative);
+                        bs.P3 = NextVector2(relative);
+
+                        if (cmdNoCase == 't')
+                        {
+                            lastQCtrlPoint = bs.P1;
+                            var t = 2.0f / 3.0f;
+                            bs.P1 = bs.P0 + t * (lastQCtrlPoint - bs.P0);
+                            bs.P2 = bs.P3 + t * (lastQCtrlPoint - bs.P3);
+                        }
+
+                        penPos = bs.P3;
+
+                        if (!VectorUtils.IsEmptySegment(bs))
+                            currentContour.AddLast(bs);
+                    }
+                    else if (cmdNoCase == 'a') // Elliptical-arc-to
+                    {
+                        Vector2 radii = NextVector2();
+                        float xAxisRotation = NextFloat();
+                        bool largeArcFlag = NextBool();
+                        bool sweepFlag = NextBool();
+                        Vector2 to = NextVector2(relative);
+
+                        if (radii.magnitude <= VectorUtils.Epsilon)
+                        {
+                            if ((to - penPos).magnitude > VectorUtils.Epsilon)
+                                currentContour.AddLast(VectorUtils.MakeLine(penPos, to));
+                        }
+                        else
+                        {
+                            var ellipsePath = VectorUtils.BuildEllipsePath(penPos, to, -xAxisRotation * Mathf.Deg2Rad, radii.x, radii.y, largeArcFlag, sweepFlag);
+                            foreach (var seg in VectorUtils.SegmentsInPath(ellipsePath))
+                                currentContour.AddLast(seg);
+                        }
+
+                        penPos = to;
                     }
 
-                    penPos = to;
-                }
+                    lastCmdNoCase = cmdNoCase;
 
-                lastCmdNoCase = cmdNoCase;
+                } // While commands exist in the string
 
-            } // While commands exist in the string
+                ConcludePath(false);
 
-            ConcludePath(false);
+            }
+            catch (Exception ex)
+            {
+                //Debug.LogError("Exception while parsing SVG path: " + ex.Message);
+            }
         }
 
         SVGAttribParser(string attrib, string attribNameVal, AttribTransform attribTransform)
