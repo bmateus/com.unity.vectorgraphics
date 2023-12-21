@@ -110,10 +110,11 @@ namespace Unity.VectorGraphics
             }
 
             var pivot = GetPivot(alignment, customPivot, rect, flipYAxis);
-
+            
             var sprite = InternalBridge.CreateSprite(rect, pivot, svgPixelsPerUnit, texture);
             sprite.OverrideGeometry(vertices.ToArray(), indices.ToArray());
-
+            //can't override geometry in editor mode unless it's in the import pipeline
+            
             if (colors != null)
             {
                 var colors32 = colors.Select(c => (Color32)c);
@@ -130,6 +131,119 @@ namespace Unity.VectorGraphics
 
             return sprite;
         }
+
+        // Since we can't override the geometry of a sprite in editor mode, using this to instead
+        // generate a mesh that can be used to render the SVG in editor mode.
+        public static Tuple<Mesh, Texture2D> BuildMesh(List<Geometry> geoms, Rect rect, Alignment alignment, Vector2 customPivot, UInt16 gradientResolution, bool flipYAxis = false)
+        {
+            // Generate atlas
+            var texAtlas = GenerateAtlasAndFillUVs(geoms, gradientResolution);
+
+            List<Vector2> vertices;
+            List<UInt16> indices;
+            List<Color> colors;
+            List<Vector2> uvs;
+            List<Vector2> settingIndices;
+            FillVertexChannels(geoms, 1.0f, texAtlas != null, 
+                out vertices, out indices, out colors, out uvs, out settingIndices, flipYAxis);
+
+            Texture2D texture = texAtlas != null ? texAtlas.Texture : null;
+
+            if (rect == Rect.zero)
+            {
+                rect = VectorUtils.Bounds(vertices);
+                VectorUtils.RealignVerticesInBounds(vertices, rect, flipYAxis);
+            }
+            else if (flipYAxis)
+            {
+                VectorUtils.FlipVerticesInBounds(vertices, rect);
+
+                // The provided rect should normally contain the whole geometry, but since VectorUtils.SceneNodeBounds doesn't
+                // take the strokes into account, some triangles may appear outside the rect. We clamp the vertices as a workaround for now.
+                VectorUtils.ClampVerticesInBounds(vertices, rect);
+            }
+
+            float offsetX = 0;
+            float offsetY = 0;
+            switch (alignment)
+            {
+                case Alignment.Center:
+                    offsetX = -0.5f;
+                    offsetY = -0.5f;
+                    break;
+                case Alignment.TopLeft:
+                    offsetX = 0;
+                    offsetY = -1f;
+                    break;
+                case Alignment.TopCenter:
+                    offsetX = -0.5f;
+                    offsetY = -1f;
+                    break;
+                case Alignment.TopRight:
+                    offsetX = -1f;
+                    offsetY = -1f;
+                    break;
+                case Alignment.LeftCenter:
+                    offsetX = 0;
+                    offsetY = -0.5f;
+                    break;
+                case Alignment.RightCenter:
+                    offsetX = -1f;
+                    offsetY = -0.5f;
+                    break;
+                case Alignment.BottomLeft:
+                    //do nothing
+                    break;
+                case Alignment.BottomCenter:
+                    offsetX = -0.5f;
+                    break;
+                case Alignment.BottomRight:
+                    offsetX = -1f;
+                    break;
+                case Alignment.Custom:
+                    offsetX = customPivot.x;
+                    offsetY = customPivot.y;
+                    break;
+            }
+
+
+            Mesh mesh = new Mesh();
+            // convert the verts from Vector2 to Vector3
+            var verts3 = new Vector3[vertices.Count];
+            for (int i = 0; i < vertices.Count; i++)
+            {
+                verts3[i] = new Vector3(vertices[i].x + offsetX, vertices[i].y + offsetY, 0);
+            }
+
+            mesh.vertices = verts3;
+            
+            //convert the indices from UInt16 to Int32
+            var indices32 = new int[indices.Count];
+            for (int i = 0; i < indices.Count; i++)
+            {
+                indices32[i] = indices[i];
+            }
+            
+            mesh.triangles = indices32;
+
+            if (colors != null)
+            {
+                var colors32 = colors.Select(c => (Color32)c);
+                using (var nativeColors = new NativeArray<Color32>(colors32.ToArray(), Allocator.Temp))
+                    mesh.SetColors(nativeColors);                    
+            }
+            if (uvs != null)
+            {
+                using (var nativeUVs = new NativeArray<Vector2>(uvs.ToArray(), Allocator.Temp))
+                    mesh.SetUVs(0, nativeUVs);
+                    
+                using (var nativeSettingIndices = new NativeArray<Vector2>(settingIndices.ToArray(), Allocator.Temp))
+                    mesh.SetUVs(2, nativeSettingIndices);                    
+            }
+
+            return new Tuple<Mesh, Texture2D>(mesh, texture);
+        }
+
 
         /// <summary>Fills a mesh geometry from a scene tessellation.</summary>
         /// <param name="mesh">The mesh object to fill</param>
